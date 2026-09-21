@@ -20,9 +20,15 @@ jobs:
           java-version: '17'
 
       - name: Prepare Android SDK
+        shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "emulator" "system-images;android-35;google_apis;x86_64"
+          set -e
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -path '*/bin/sdkmanager' | head -n 1)"
+          echo "Using sdkmanager: $SDKMANAGER"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Create Android project
         run: |
@@ -118,11 +124,10 @@ jobs:
 
                   WebView web = new WebView(this);
                   WebSettings settings = web.getSettings();
-
                   settings.setJavaScriptEnabled(true);
                   settings.setDomStorageEnabled(true);
                   settings.setAllowFileAccess(true);
-                  settings.setAllowContentAccess(true);
+                  settings.setAllowUniversalAccessFromFileURLs(true);
 
                   web.loadUrl("file:///android_asset/index.html");
                   setContentView(web);
@@ -130,10 +135,26 @@ jobs:
           }
           EOF
 
+          ZIP_FILE="$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1 || true)"
+          if [ -n "$ZIP_FILE" ]; then
+            unzip -oq "$ZIP_FILE" -d app/src/main/assets
+          fi
+
+          if [ ! -f app/src/main/assets/index.html ]; then
+            cat > app/src/main/assets/index.html <<'EOF'
+          <!doctype html>
+          <html>
+          <body style="background:#111;color:white;text-align:center;padding-top:40%">
+          Android test OK
+          </body>
+          </html>
+          EOF
+          fi
+
       - name: Install Gradle
         run: |
           wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
-          unzip -q gradle-8.7-bin.zip
+          unzip -q -o gradle-8.7-bin.zip
           echo "$PWD/gradle-8.7/bin" >> "$GITHUB_PATH"
 
       - name: Build APK
@@ -143,4 +164,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: madrese-safi-debug
-          path: app/build/outputs/apk/debug/app-debug.apk   
+          path: app/build/outputs/apk/debug/app-debug.apk
