@@ -19,17 +19,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK
+      - name: Prepare Android SDK
         run: |
+          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "emulator" "system-images;android-35;google_apis;x86_64"
 
       - name: Create Android project
         run: |
           mkdir -p app/src/main/java/com/safi/madrese
           mkdir -p app/src/main/assets
+          mkdir -p app/src/main/res/values
 
           cat > settings.gradle <<'EOF'
           pluginManagement {
@@ -81,12 +80,11 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application
                   android:theme="@style/AppTheme"
-                  android:label="مدرسه صافی ( دمو )"
-                  android:usesCleartextTraffic="true">
+                  android:label="مدرسه صافی ( دمو )">
                   <activity
                       android:name=".MainActivity"
-                      android:screenOrientation="landscape"
-                      android:exported="true">
+                      android:exported="true"
+                      android:screenOrientation="landscape">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN"/>
                           <category android:name="android.intent.category.LAUNCHER"/>
@@ -96,12 +94,10 @@ jobs:
           </manifest>
           EOF
 
-          mkdir -p app/src/main/res/values
-
           cat > app/src/main/res/values/styles.xml <<'EOF'
           <resources>
-              <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
-                  <item name="android:fontFamily">sans</item>
+              <style name="AppTheme"
+                     parent="android:style/Theme.Material.Light.NoActionBar">
                   <item name="android:windowFullscreen">true</item>
               </style>
           </resources>
@@ -121,12 +117,12 @@ jobs:
                   super.onCreate(savedInstanceState);
 
                   WebView web = new WebView(this);
-                  WebSettings s = web.getSettings();
-                  s.setJavaScriptEnabled(true);
-                  s.setDomStorageEnabled(true);
-                  s.setAllowFileAccess(true);
-                  s.setAllowContentAccess(true);
-                  s.setMediaPlaybackRequiresUserGesture(false);
+                  WebSettings settings = web.getSettings();
+
+                  settings.setJavaScriptEnabled(true);
+                  settings.setDomStorageEnabled(true);
+                  settings.setAllowFileAccess(true);
+                  settings.setAllowContentAccess(true);
 
                   web.loadUrl("file:///android_asset/index.html");
                   setContentView(web);
@@ -147,4 +143,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: madrese-safi-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk   
