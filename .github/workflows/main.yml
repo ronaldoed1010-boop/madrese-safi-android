@@ -165,3 +165,33 @@ jobs:
         with:
           name: madrese-safi-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Test APK on Android Emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim
+          disable-animations: true
+          script: |
+            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell am force-stop com.safi.madrese
+            adb shell monkey -p com.safi.madrese 1
+            sleep 10
+            adb shell pidof com.safi.madrese
+            adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' || true
+            adb exec-out screencap -p > emulator-screen.png
+            adb logcat -d -t 300 > emulator-logcat.txt
+            if grep -Eiq 'FATAL EXCEPTION|Process: com.safi.madrese' emulator-logcat.txt; then
+              exit 1
+            fi
+
+      - name: Upload Android test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-test-evidence
+          path: |
+            emulator-screen.png
+            emulator-logcat.txt
