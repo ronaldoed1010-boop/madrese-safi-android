@@ -3,7 +3,8 @@ name: Android Build and Test
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
   build-and-test:
@@ -23,15 +24,27 @@ jobs:
         shell: bash
         run: |
           set -e
+
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+
           SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -path '*/bin/sdkmanager' | head -n 1)"
+
           echo "Using sdkmanager: $SDKMANAGER"
+
           echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+          "$SDKMANAGER" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Create Android project
+        shell: bash
         run: |
+          set -e
+
           mkdir -p app/src/main/java/com/safi/madrese
           mkdir -p app/src/main/assets
           mkdir -p app/src/main/res/values
@@ -84,28 +97,41 @@ jobs:
 
           cat > app/src/main/AndroidManifest.xml <<'EOF'
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
               <application
                   android:theme="@style/AppTheme"
-                  android:label="مدرسه صافی ( دمو )">
+                  android:label="مدرسه صافی ( دمو )"
+                  android:hardwareAccelerated="true">
+
                   <activity
                       android:name=".MainActivity"
                       android:exported="true"
                       android:screenOrientation="landscape">
+
                       <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
+
                   </activity>
+
               </application>
+
           </manifest>
           EOF
 
           cat > app/src/main/res/values/styles.xml <<'EOF'
           <resources>
-              <style name="AppTheme"
-                     parent="android:style/Theme.Material.Light.NoActionBar">
+
+              <style
+                  name="AppTheme"
+                  parent="android:style/Theme.Material.Light.NoActionBar">
+
                   <item name="android:windowFullscreen">true</item>
+                  <item name="android:windowActionModeOverlay">true</item>
+
               </style>
+
           </resources>
           EOF
 
@@ -116,55 +142,111 @@ jobs:
           import android.os.Bundle;
           import android.webkit.WebSettings;
           import android.webkit.WebView;
+          import android.webkit.WebViewClient;
 
           public class MainActivity extends Activity {
+
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
 
                   WebView web = new WebView(this);
+
                   WebSettings settings = web.getSettings();
+
                   settings.setJavaScriptEnabled(true);
                   settings.setDomStorageEnabled(true);
+                  settings.setDatabaseEnabled(true);
                   settings.setAllowFileAccess(true);
+                  settings.setAllowContentAccess(true);
                   settings.setAllowUniversalAccessFromFileURLs(true);
+                  settings.setMediaPlaybackRequiresUserGesture(false);
+
+                  web.setWebViewClient(new WebViewClient());
 
                   web.loadUrl("file:///android_asset/index.html");
+
                   setContentView(web);
               }
           }
           EOF
 
           ZIP_FILE="$(find . -maxdepth 1 -type f -iname '*.zip' | head -n 1 || true)"
+
           if [ -n "$ZIP_FILE" ]; then
+            echo "Found game ZIP: $ZIP_FILE"
             unzip -oq "$ZIP_FILE" -d app/src/main/assets
+          else
+            echo "No game ZIP found."
           fi
 
           if [ ! -f app/src/main/assets/index.html ]; then
+
             cat > app/src/main/assets/index.html <<'EOF'
           <!doctype html>
-          <html>
-          <body style="background:#111;color:white;text-align:center;padding-top:40%">
-          Android test OK
+          <html lang="en">
+          <head>
+              <meta charset="utf-8">
+              <meta
+                  name="viewport"
+                  content="width=device-width, initial-scale=1.0">
+              <title>Madrese Safi</title>
+          </head>
+
+          <body
+              style="
+                  margin:0;
+                  background:#111;
+                  color:white;
+                  display:flex;
+                  align-items:center;
+                  justify-content:center;
+                  height:100vh;
+                  font-family:sans-serif;
+                  text-align:center;
+              ">
+
+              <div>
+                  <h1>مدرسه صافی</h1>
+                  <p>Android test OK</p>
+              </div>
+
           </body>
           </html>
           EOF
+
           fi
 
+          echo "Android project created."
+
       - name: Install Gradle
+        shell: bash
         run: |
+          set -e
+
           wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
+
           unzip -q -o gradle-8.7-bin.zip
+
           echo "$PWD/gradle-8.7/bin" >> "$GITHUB_PATH"
 
       - name: Build APK
-        run: gradle assembleDebug --no-daemon
+        shell: bash
+        run: |
+          set -e
+
+          gradle assembleDebug --no-daemon
+
+          echo "APK built successfully."
+
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: madrese-safi-debug
           path: app/build/outputs/apk/debug/app-debug.apk
+
       - name: Test APK on Android Emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -175,25 +257,45 @@ jobs:
           emulator-options: -no-window -no-audio -no-boot-anim
           disable-animations: true
           script: |
+            set -e
+
+            echo "Installing APK..."
+
             adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+            echo "Starting application..."
+
             adb shell am force-stop com.safi.madrese
+
             adb shell monkey -p com.safi.madrese 1
+
             sleep 10
+
+            echo "Checking application process..."
+
             adb shell pidof com.safi.madrese
+
+            echo "Checking current Android screen..."
+
             adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' || true
+
+            echo "Taking screenshot..."
+
             adb exec-out screencap -p > emulator-screen.png
-                        adb logcat -d -t 300 > emulator-logcat.txt
-            python3 - <<'PY'
-import re
-import sys
 
-log = open("emulator-logcat.txt", encoding="utf-8", errors="ignore").read()
-if re.search(r"FATAL EXCEPTION|Process: com\.safi\.madrese", log, re.I):
-    print("Android app crash detected in logcat.")
-    sys.exit(1)
+            echo "Collecting logcat..."
 
-print("No fatal exception detected.")
-PY
+            adb logcat -d -t 300 > emulator-logcat.txt
+
+            echo "Checking for crashes..."
+
+            if grep -Eiq 'FATAL EXCEPTION|Process: com\.safi\.madrese' emulator-logcat.txt; then
+              echo "ANDROID APP CRASH DETECTED"
+              cat emulator-logcat.txt
+              exit 1
+            fi
+
+            echo "ANDROID APP TEST PASSED"
 
       - name: Upload Android test evidence
         if: always()
