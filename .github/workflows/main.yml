@@ -182,10 +182,18 @@ jobs:
             adb shell pidof com.safi.madrese
             adb shell dumpsys window | grep -E 'mCurrentFocus|mFocusedApp' || true
             adb exec-out screencap -p > emulator-screen.png
-            adb logcat -d -t 300 > emulator-logcat.txt
-            if grep -Eiq 'FATAL EXCEPTION|Process: com.safi.madrese' emulator-logcat.txt; then
-              exit 1
-            fi
+                        adb logcat -d -t 300 > emulator-logcat.txt
+            python3 - <<'PY'
+import re
+import sys
+
+log = open("emulator-logcat.txt", encoding="utf-8", errors="ignore").read()
+if re.search(r"FATAL EXCEPTION|Process: com\.safi\.madrese", log, re.I):
+    print("Android app crash detected in logcat.")
+    sys.exit(1)
+
+print("No fatal exception detected.")
+PY
 
       - name: Upload Android test evidence
         if: always()
